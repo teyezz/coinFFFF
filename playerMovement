@@ -1,0 +1,217 @@
+using System.Collections;
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+[RequireComponent(typeof(Rigidbody), typeof(PlayerInput))]
+public class PlayerMovement : MonoBehaviour
+{
+    public bool isInventory = false;
+    public bool isDead = false;
+    public bool isAction = false;
+    public bool isAttack = false;
+    public bool isBlood = false;
+    [SerializeField]
+    Vector2 inputVector;
+
+    Transform cameratr;
+
+    [Header("LockOnField")]
+    [SerializeField]
+    public bool IsLockOn;
+    Animator ani;
+
+    WaitForSeconds HittedDeley = new WaitForSeconds(1.5f);
+    WaitForSeconds AttackDeley = new WaitForSeconds(1.1f);
+    WaitForSeconds BloodingCount = new WaitForSeconds(30f);
+    [SerializeField]
+    public STD std;
+    ParticleSystem weaponParti;
+    ParticleSystem blooddrip;
+
+    public float moveSpeed = 2f;
+    [Range(1, 180)]
+    public float rotSpeed = 90f;
+    public float rollingSpeed = 4f;
+    BoxCollider swoardColl;
+
+    Vector3 dirc;
+    public float yG;
+    readonly private string MainCam = "MainCamera";
+    readonly private string ENEMY = "ENEMY";
+    readonly private int attack = Animator.StringToHash("attack");
+    readonly private int HoriMove = Animator.StringToHash("HoriMove");
+    readonly private int VertiMove = Animator.StringToHash("VertiMove");
+    readonly private int isMove = Animator.StringToHash("isMove");
+    readonly private int Reaction = Animator.StringToHash("Reaction");
+    readonly private int rolling = Animator.StringToHash("Rolling");
+
+    Rigidbody rb;
+    [Tooltip("비워두세용 자동이랍니다")]
+    public Transform enemyTr;
+
+    private void Awake()
+    {
+        rb = GetComponent<Rigidbody>();
+        cameratr = GameObject.FindWithTag(MainCam).transform;
+        rb.freezeRotation = true;
+        ani = GetComponent<Animator>();
+        swoardColl = GetComponentInChildren<BoxCollider>();
+        swoardColl.enabled = false;
+        std = GetComponent<STD>();
+        weaponParti = swoardColl.GetComponentInChildren<ParticleSystem>();
+        blooddrip = swoardColl.transform.GetChild(1).GetChild(0).GetComponent<ParticleSystem>();
+    }
+
+
+    private void Update()
+    {
+        if (rb.velocity == Vector3.zero)
+        {
+            ani.SetBool(isMove, false);
+        }
+        else if(!isAction)
+        {
+            RotToCam();
+        }
+        if (Input.GetMouseButtonDown(0) && !isAction)
+        {
+            StartCoroutine(Attack());
+        }
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            StartCoroutine(Rolling());
+        }
+    }
+
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        if (collision.gameObject.CompareTag(ENEMY) && !isAction)
+        {
+            StartCoroutine(Hitted());
+            var enemystd = collision.transform.GetComponent<STD>();
+            BattleBehaviour.Battle(enemystd, std);
+        }
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (other.gameObject.CompareTag("ENEMY"))
+        {
+            var enemystd = other.transform.GetComponent<STD>();
+            BattleBehaviour.Battle(std, enemystd);
+            weaponParti.Play();
+            StartCoroutine(Blooding());
+        }
+    }
+
+    void RotToCam()
+    {
+        if (!IsLockOn)
+        {
+            Vector3 vec = new Vector3(0f, cameratr.eulerAngles.y, 0f);
+            Quaternion lookRotation = Quaternion.Euler(vec);
+            transform.rotation = Quaternion.RotateTowards
+                (
+                transform.rotation,
+                lookRotation,
+                rotSpeed
+                );
+        }
+    }
+
+    void  OnMove(InputAction.CallbackContext context)       //1회 호출?
+    {
+        inputVector = context.ReadValue<Vector2>();
+        if (!isAction)
+        {
+            ani.SetBool(isMove, true);
+            ani.SetFloat(HoriMove, inputVector.x);
+            ani.SetFloat(VertiMove, inputVector.y);
+            /*if (rb.velocity != Vector3.zero && !IsLockOn)
+            {
+                Vector3 vec = new Vector3(0f, cameratr.eulerAngles.y, 0f);
+                Quaternion lookRotation = Quaternion.Euler(vec);
+                transform.rotation = Quaternion.RotateTowards
+                    (
+                    transform.rotation,
+                    lookRotation,
+                    rotSpeed
+                    );
+            }*/
+            yG = StandingOnGround() ? 0 : -12f;
+            Vector3 moveDirection = (transform.forward * inputVector.y) + (transform.right * inputVector.x) + (transform.up * yG);
+            rb.velocity = moveDirection * moveSpeed;
+        }
+    }
+
+    IEnumerator Attack()
+    {
+        if (isAttack) yield break;
+        isAttack = true;
+        swoardColl.enabled = true;
+        ani.SetTrigger(attack);
+
+        yield return AttackDeley;
+
+        swoardColl.enabled = false;
+        isAttack = false;
+    }
+
+    bool StandingOnGround()
+    {
+        RaycastHit hit;
+        float rayLength = 20.0f;
+        Vector3 pos = this.transform.position;
+        Vector3 cubePos = pos;
+
+        Vector3 boxSize = new Vector3(0.5f, 0.5f, 0.5f);
+        if (Physics.BoxCast(cubePos, boxSize / 2, Vector3.down, out hit, Quaternion.identity, rayLength))
+        {
+            if (hit.distance > 0.1f)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    IEnumerator Rolling()
+    {
+        if (isAction) yield return null;
+        isAction = true;
+        rb.velocity = Vector3.zero;
+        Vector3 inputPos = new Vector3(inputVector.x, 0, inputVector.y);
+        dirc = transform.position + transform.rotation * inputPos;
+        transform.LookAt(dirc);
+        ani.SetTrigger(rolling);
+        rb.AddForce(transform.forward * rollingSpeed/2, ForceMode.Impulse);
+        yield return new WaitForSeconds(0.36f);
+        rb.AddForce(transform.forward * rollingSpeed, ForceMode.Impulse);
+        yield return new WaitForSeconds(0.8f);
+        rb.velocity = Vector3.zero;
+        isAction = false;
+    }
+
+    IEnumerator Hitted()
+    {
+        isAction = true;
+        rb.velocity = Vector3.zero;
+        ani.Play(Reaction);
+
+        yield return HittedDeley;
+        isAction = false;
+    }
+
+    IEnumerator Blooding()
+    {
+        if (isBlood) yield break;
+        isBlood = true;
+        blooddrip.Play();
+
+        yield return BloodingCount;
+
+        blooddrip.Stop();
+        isBlood = false;
+    }
+}
