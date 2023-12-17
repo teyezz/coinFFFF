@@ -1,0 +1,128 @@
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+public class RigidbodyMove : MonoBehaviour
+{
+    private Vector3 moveDirection;
+    private bool isMoving;
+    private Rigidbody rb;
+    private Transform mainCamera;
+    private float moveSpeed = 4f;
+
+    [SerializeField]
+    private bool isFalling = false;
+    [SerializeField]
+    private bool isHitted = false;
+    [SerializeField]
+    private bool isOnSlope = false;
+    [SerializeField]
+    private float maxSlopeAngle = 45f;
+
+    float rayLength = float.MaxValue;
+    float radius = 0.5f;
+
+
+    private Animator anim;
+    private void Awake()
+    {
+        rb = GetComponent<Rigidbody>();
+        anim = GetComponent<Animator>();
+        mainCamera = Camera.main.transform;
+    }
+
+
+    /*
+     이동 로직 순서
+    추락 여부 계산 => 바닥에 raycast
+    추락이 아닐 경우 이동 여부 확인         //추락일 경우 이동 불능 상태로 낙하
+    이동일 경우 앞에 장애물이 있는 지 확인  //장애물이 없다면 이동
+    장애물이 있을 경우 오를 수 있는 지 확인 //오를 수 없다면 이동 중지
+    오를 수 있는/내려갈 수 있는 경사면 이동 //추락과 이동 가능 각도 사이에 등반과 미끄러짐 각도를 추가할 수 있음
+     */
+    private void FixedUpdate()
+    {
+        FollowCamZ();
+        StandingOnGround(); // <= 추락에 대해 먼저 계산한다    => 추락 시 통제 불가
+        Vector3 worldMoveDirection = transform.TransformDirection(moveDirection);
+
+        if (!isFalling)
+        {
+            CheckGround();
+            rb.velocity = worldMoveDirection * moveSpeed;
+        }
+        else if (isFalling)
+        {
+            rb.velocity = Vector3.zero + Vector3.up * -9.8F;
+        }
+    }
+
+    public void OnMove(InputAction.CallbackContext context) //<=이동에 대한 입력을 담당 실제 반영은 위에 FixedUpdate의 rb.veloctiy에서 반영
+    {
+        if (context.performed)
+        {
+            isMoving = true;
+            Vector2 input = context.ReadValue<Vector2>();
+            moveDirection = new Vector3(input.x, 0f, input.y);
+        }
+        else if (context.canceled)
+        {
+            isMoving = false;
+            moveDirection = Vector3.zero;
+        }
+    
+    }
+
+
+    private void CheckGround()
+    {
+        RaycastHit hit;
+        if (Physics.Raycast(transform.position, Vector3.forward, out hit, 1.1f))
+        {
+            float slopeAngle = Vector3.Angle(hit.normal, Vector3.up);
+
+            isOnSlope = slopeAngle > 0 && slopeAngle <= maxSlopeAngle;
+
+            if (isOnSlope && isMoving)
+            {
+                Vector3 slopeMoveDirection = Vector3.ProjectOnPlane(moveDirection, hit.normal);
+                moveDirection = slopeMoveDirection.normalized;
+            }
+        }
+        else
+        {
+            moveDirection.y = 0f;
+            isOnSlope = false;
+        }
+    
+    }
+
+    //오르막길 앞에서 자꾸 추락판정이 생김 해결해야 함
+    private void StandingOnGround()
+    {
+        RaycastHit hit;
+        if (Physics.SphereCast(transform.position, radius, Vector3.down, out hit, rayLength))
+        {
+            if (hit.distance > 0.1f)
+                isFalling = true;
+            else
+                isFalling = false;
+        }
+    }
+
+    void FollowCamZ()
+    {
+        Vector3 LookRot = new Vector3(0, mainCamera.eulerAngles.y, 0);
+        transform.rotation = Quaternion.Lerp
+            (
+            transform.rotation,
+            Quaternion.Euler(LookRot),
+            moveSpeed * Time.deltaTime
+            );
+    }
+
+    //bool값들을 이용해 애니메이션을 제어함
+    private void AnimationUpdate()
+    {
+        
+    }
+}
