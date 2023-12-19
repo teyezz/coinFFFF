@@ -8,6 +8,7 @@ public class RigidbodyMove : MonoBehaviour
     private Rigidbody rb;
     private Transform mainCamera;
     private float moveSpeed = 4f;
+    private int comboo = 0;
 
     [SerializeField]
     private bool isFalling = false;
@@ -17,10 +18,30 @@ public class RigidbodyMove : MonoBehaviour
     private bool isOnSlope = false;
     [SerializeField]
     private float maxSlopeAngle = 45f;
+    [SerializeField]
+    float vertiGravity;
 
     float rayLength = float.MaxValue;
     float radius = 0.5f;
+    float comboTimer;
 
+    [SerializeField]
+    private BoxCollider weaponCollider;
+
+    private class AnimationString
+    {
+        readonly public int attack = Animator.StringToHash("attack");
+        readonly public int HoriMove = Animator.StringToHash("HoriMove");
+        readonly public int VertiMove = Animator.StringToHash("VertiMove");
+        readonly public int isMove = Animator.StringToHash("isMove");
+        readonly public int isRun = Animator.StringToHash("IsRun");
+        readonly public int Reaction = Animator.StringToHash("Reaction");
+        readonly public int rolling = Animator.StringToHash("Rolling");
+        readonly public int sliding = Animator.StringToHash("Sliding");
+        readonly public int ComboCount = Animator.StringToHash("Combo");
+    }
+
+    private AnimationString AnimS = new();
 
     private Animator anim;
     private void Awake()
@@ -28,6 +49,7 @@ public class RigidbodyMove : MonoBehaviour
         rb = GetComponent<Rigidbody>();
         anim = GetComponent<Animator>();
         mainCamera = Camera.main.transform;
+        weaponCollider.enabled = false;
     }
 
 
@@ -39,27 +61,38 @@ public class RigidbodyMove : MonoBehaviour
     장애물이 있을 경우 오를 수 있는 지 확인 //오를 수 없다면 이동 중지
     오를 수 있는/내려갈 수 있는 경사면 이동 //추락과 이동 가능 각도 사이에 등반과 미끄러짐 각도를 추가할 수 있음
      */
-    private void FixedUpdate()
+    private void Update()
     {
-        FollowCamZ();
-        StandingOnGround(); // <= 추락에 대해 먼저 계산한다    => 추락 시 통제 불가
-        Vector3 worldMoveDirection = transform.TransformDirection(moveDirection);
+        UpdateAnimation();
+        if (isMoving)
+            UpdateCamRotation();
+        comboTimer = Mathf.Clamp(comboTimer, 0, 3f);
+        comboTimer -= Time.deltaTime;
+        print(comboTimer);
+        if (comboTimer <= 0)
+            comboo = 0;
+        anim.SetInteger(AnimS.ComboCount, comboo);
+    }
 
-        if (!isFalling)
+    private void FixedUpdate()  //<= 이동이 최종적으로 rigidBody를 통해 반영되므로 FixedUpdate에서 반영함
+    {
+        Vector3 worldMoveDirection = transform.TransformDirection(moveDirection);
+        CheckGround();
+        if (!isOnSlope)
         {
-            CheckGround();
+            StandingOnGround(); // <= 추락에 대해 먼저 계산한다    => 추락 시 통제 불가
+            vertiGravity = isFalling ? 9.8f : 0.0f;
+            rb.velocity = worldMoveDirection * moveSpeed + vertiGravity * Vector3.down;
+        }
+        else 
             rb.velocity = worldMoveDirection * moveSpeed;
-        }
-        else if (isFalling)
-        {
-            rb.velocity = Vector3.zero + Vector3.up * -9.8F;
-        }
     }
 
     public void OnMove(InputAction.CallbackContext context) //<=이동에 대한 입력을 담당 실제 반영은 위에 FixedUpdate의 rb.veloctiy에서 반영
     {
         if (context.performed)
         {
+            
             isMoving = true;
             Vector2 input = context.ReadValue<Vector2>();
             moveDirection = new Vector3(input.x, 0f, input.y);
@@ -72,7 +105,24 @@ public class RigidbodyMove : MonoBehaviour
     
     }
 
-
+    public void OnAttack(InputAction.CallbackContext context)       //<=멍청한 함수1클릭 6호출
+    {
+        comboTimer = 1f;
+        comboo++;
+        if (context.performed)
+        {
+            if (comboTimer > 0)
+            {
+                anim.SetInteger(AnimS.ComboCount, comboo);
+            }
+            weaponCollider.enabled = true;
+            anim.SetTrigger(AnimS.attack);
+        }
+        else if (context.canceled)
+        {
+            weaponCollider.enabled = false;
+        }
+    }
     private void CheckGround()
     {
         RaycastHit hit;
@@ -100,16 +150,16 @@ public class RigidbodyMove : MonoBehaviour
     private void StandingOnGround()
     {
         RaycastHit hit;
-        if (Physics.SphereCast(transform.position, radius, Vector3.down, out hit, rayLength))
+        if (Physics.SphereCast(transform.position, radius, Vector3.down, out hit, rayLength, -1))
         {
-            if (hit.distance > 0.1f)
+            if (hit.distance > 0.2f)
                 isFalling = true;
             else
                 isFalling = false;
         }
     }
 
-    void FollowCamZ()
+    void UpdateCamRotation()
     {
         Vector3 LookRot = new Vector3(0, mainCamera.eulerAngles.y, 0);
         transform.rotation = Quaternion.Lerp
@@ -120,9 +170,21 @@ public class RigidbodyMove : MonoBehaviour
             );
     }
 
-    //bool값들을 이용해 애니메이션을 제어함
-    private void AnimationUpdate()
+    /*
+    readonly private int attack = Animator.StringToHash("attack");
+    readonly private int HoriMove = Animator.StringToHash("HoriMove");  
+    readonly private int VertiMove = Animator.StringToHash("VertiMove");
+    readonly private int isMove = Animator.StringToHash("isMove");
+    readonly private int isRun = Animator.StringToHash("IsRun");
+    readonly private int Reaction = Animator.StringToHash("Reaction");
+    readonly private int rolling = Animator.StringToHash("Rolling");
+    readonly private int sliding = Animator.StringToHash("Sliding");
+     */
+
+    private void UpdateAnimation()  //<= bool값을 통해 animation을 제어함
     {
-        
+        anim.SetFloat(AnimS.HoriMove, moveDirection.x);
+        anim.SetFloat(AnimS.VertiMove, moveDirection.y);
+        anim.SetBool(AnimS.isMove, isMoving);
     }
 }
