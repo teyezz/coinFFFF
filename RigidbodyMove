@@ -1,3 +1,4 @@
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -8,7 +9,12 @@ public class RigidbodyMove : MonoBehaviour
     private Rigidbody rb;
     private Transform mainCamera;
     private float moveSpeed = 4f;
-    private int comboo = 0;
+    private float slopeAngle = 0f;
+
+    private Vector3 _capsuleBottum;
+    private Vector3 _capsuleTop;
+    private Vector3 OnSlopMoveDir;
+    private float _capsuleRadius;
 
     [SerializeField]
     private bool isFalling = false;
@@ -22,8 +28,7 @@ public class RigidbodyMove : MonoBehaviour
     float vertiGravity;
 
     float rayLength = float.MaxValue;
-    float radius = 0.5f;
-    float comboTimer;
+    float radius = 0.01f;
 
     [SerializeField]
     private BoxCollider weaponCollider;
@@ -38,7 +43,6 @@ public class RigidbodyMove : MonoBehaviour
         readonly public int Reaction = Animator.StringToHash("Reaction");
         readonly public int rolling = Animator.StringToHash("Rolling");
         readonly public int sliding = Animator.StringToHash("Sliding");
-        readonly public int ComboCount = Animator.StringToHash("Combo");
     }
 
     private AnimationString AnimS = new();
@@ -50,6 +54,7 @@ public class RigidbodyMove : MonoBehaviour
         anim = GetComponent<Animator>();
         mainCamera = Camera.main.transform;
         weaponCollider.enabled = false;
+        _capsuleRadius = transform.GetComponent<CapsuleCollider>().radius;
     }
 
 
@@ -63,99 +68,84 @@ public class RigidbodyMove : MonoBehaviour
      */
     private void Update()
     {
+        UpdateValue();
         UpdateAnimation();
         if (isMoving)
             UpdateCamRotation();
-        comboTimer = Mathf.Clamp(comboTimer, 0, 3f);
-        comboTimer -= Time.deltaTime;
-        print(comboTimer);
-        if (comboTimer <= 0)
-            comboo = 0;
-        anim.SetInteger(AnimS.ComboCount, comboo);
+        //anim.SetInteger(AnimS.ComboCount, comboo);
     }
 
     private void FixedUpdate()  //<= 이동이 최종적으로 rigidBody를 통해 반영되므로 FixedUpdate에서 반영함
     {
+        StandingOnGround();
+        ForwardCheck();
         Vector3 worldMoveDirection = transform.TransformDirection(moveDirection);
-        CheckGround();
         if (!isOnSlope)
-        {
-            StandingOnGround(); // <= 추락에 대해 먼저 계산한다    => 추락 시 통제 불가
-            vertiGravity = isFalling ? 9.8f : 0.0f;
             rb.velocity = worldMoveDirection * moveSpeed + vertiGravity * Vector3.down;
-        }
-        else 
-            rb.velocity = worldMoveDirection * moveSpeed;
+        
+        else if(isOnSlope)
+            rb.velocity = transform.TransformDirection(OnSlopMoveDir) * moveSpeed;
     }
 
     public void OnMove(InputAction.CallbackContext context) //<=이동에 대한 입력을 담당 실제 반영은 위에 FixedUpdate의 rb.veloctiy에서 반영
     {
         if (context.performed)
         {
-            
             isMoving = true;
             Vector2 input = context.ReadValue<Vector2>();
             moveDirection = new Vector3(input.x, 0f, input.y);
         }
-        else if (context.canceled)
+        else if (context.canceled)  
         {
             isMoving = false;
             moveDirection = Vector3.zero;
         }
     
     }
-
-    public void OnAttack(InputAction.CallbackContext context)       //<=멍청한 함수1클릭 6호출
-    {
-        comboTimer = 1f;
-        comboo++;
-        if (context.performed)
-        {
-            if (comboTimer > 0)
-            {
-                anim.SetInteger(AnimS.ComboCount, comboo);
-            }
-            weaponCollider.enabled = true;
-            anim.SetTrigger(AnimS.attack);
-        }
-        else if (context.canceled)
-        {
-            weaponCollider.enabled = false;
-        }
-    }
-    private void CheckGround()
+    private void ForwardCheck()
     {
         RaycastHit hit;
-        if (Physics.Raycast(transform.position, Vector3.forward, out hit, 1.1f))
+        isOnSlope = false;
+        bool raycast =
+            Physics.CapsuleCast(_capsuleBottum, _capsuleTop, _capsuleRadius, transform.forward, out hit, 1.1f, -1, QueryTriggerInteraction.Ignore);
+        if (raycast)
         {
-            float slopeAngle = Vector3.Angle(hit.normal, Vector3.up);
-
+            slopeAngle = Vector3.Angle(hit.normal, Vector3.up);
             isOnSlope = slopeAngle > 0 && slopeAngle <= maxSlopeAngle;
-
             if (isOnSlope && isMoving)
             {
                 Vector3 slopeMoveDirection = Vector3.ProjectOnPlane(moveDirection, hit.normal);
-                moveDirection = slopeMoveDirection.normalized;
+                if (moveDirection.z > 0) 
+                {
+                    OnSlopMoveDir = slopeMoveDirection.normalized;
+                }
+                else if(moveDirection.z < 0)
+                {
+                    slopeMoveDirection.y *= -1f;
+                    OnSlopMoveDir = slopeMoveDirection.normalized;
+                }
             }
         }
-        else
-        {
-            moveDirection.y = 0f;
-            isOnSlope = false;
-        }
-    
     }
 
     //오르막길 앞에서 자꾸 추락판정이 생김 해결해야 함
     private void StandingOnGround()
     {
         RaycastHit hit;
-        if (Physics.SphereCast(transform.position, radius, Vector3.down, out hit, rayLength, -1))
+        if (Physics.SphereCast(transform.position, radius, Vector3.down, out hit, rayLength, -1, QueryTriggerInteraction.Ignore))
         {
-            if (hit.distance > 0.2f)
+            print("hit.name : " + hit.transform.name);
+            print("hit.distance : " + hit.distance);
+            if (hit.distance > 0.1f)
+            {
+                vertiGravity = 9.8f;
                 isFalling = true;
+            }
             else
+            {
+                vertiGravity = 0f;
                 isFalling = false;
+            }
         }
     }
 
@@ -168,6 +158,12 @@ public class RigidbodyMove : MonoBehaviour
             Quaternion.Euler(LookRot),
             moveSpeed * Time.deltaTime
             );
+    }
+
+    void UpdateValue()
+    {
+        _capsuleBottum = transform.position + Vector3.up;
+        _capsuleTop = transform.position + Vector3.up * 1.1f;
     }
 
     /*
