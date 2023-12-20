@@ -1,21 +1,16 @@
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 public class RigidbodyMove : MonoBehaviour
 {
-    private Vector3 moveDirection;
-    private bool isMoving;
     private Rigidbody rb;
     private Transform mainCamera;
     private float moveSpeed = 4f;
-    private float slopeAngle = 0f;
 
-    private Vector3 _capsuleBottum;
-    private Vector3 _capsuleTop;
-    private Vector3 OnSlopMoveDir;
-    private float _capsuleRadius;
-
+    [SerializeField]
+    private bool isMoving = false;
+    [SerializeField]
+    private bool isAttack = false;
     [SerializeField]
     private bool isFalling = false;
     [SerializeField]
@@ -25,38 +20,27 @@ public class RigidbodyMove : MonoBehaviour
     [SerializeField]
     private float maxSlopeAngle = 45f;
     [SerializeField]
-    float vertiGravity;
-
-    float rayLength = float.MaxValue;
-    float radius = 0.01f;
-
+   private Vector3 worldMoveDirection;
     [SerializeField]
-    private BoxCollider weaponCollider;
+    private Vector3 moveDirection;
+    [SerializeField]
+    private Vector3 slopeDirection;
 
-    private class AnimationString
-    {
-        readonly public int attack = Animator.StringToHash("attack");
-        readonly public int HoriMove = Animator.StringToHash("HoriMove");
-        readonly public int VertiMove = Animator.StringToHash("VertiMove");
-        readonly public int isMove = Animator.StringToHash("isMove");
-        readonly public int isRun = Animator.StringToHash("IsRun");
-        readonly public int Reaction = Animator.StringToHash("Reaction");
-        readonly public int rolling = Animator.StringToHash("Rolling");
-        readonly public int sliding = Animator.StringToHash("Sliding");
-    }
-
-    private AnimationString AnimS = new();
+    private float vertiGravity;
+    private Vector3 _capsuleBottum;
+    private Vector3 _capsuleTop;
+    private float _capsuleRadius = 0.1f;
+    float rayLength = float.MaxValue;
+    float radius = 0.5f;
 
     private Animator anim;
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
+        rb.freezeRotation = true;
         anim = GetComponent<Animator>();
         mainCamera = Camera.main.transform;
-        weaponCollider.enabled = false;
-        _capsuleRadius = transform.GetComponent<CapsuleCollider>().radius;
     }
-
 
     /*
      이동 로직 순서
@@ -68,23 +52,19 @@ public class RigidbodyMove : MonoBehaviour
      */
     private void Update()
     {
-        UpdateValue();
         UpdateAnimation();
-        if (isMoving)
+        UpdateValue();
+        if(isMoving || isAttack)
             UpdateCamRotation();
-        //anim.SetInteger(AnimS.ComboCount, comboo);
     }
 
     private void FixedUpdate()  //<= 이동이 최종적으로 rigidBody를 통해 반영되므로 FixedUpdate에서 반영함
     {
+        worldMoveDirection = transform.TransformDirection(moveDirection);
+        slopeDirection = transform.TransformDirection(slopeDirection);
+        CheckGround();
         StandingOnGround();
-        ForwardCheck();
-        Vector3 worldMoveDirection = transform.TransformDirection(moveDirection);
-        if (!isOnSlope)
-            rb.velocity = worldMoveDirection * moveSpeed + vertiGravity * Vector3.down;
-        
-        else if(isOnSlope)
-            rb.velocity = transform.TransformDirection(OnSlopMoveDir) * moveSpeed;
+        UpdateVeloCity();
     }
 
     public void OnMove(InputAction.CallbackContext context) //<=이동에 대한 입력을 담당 실제 반영은 위에 FixedUpdate의 rb.veloctiy에서 반영
@@ -93,63 +73,57 @@ public class RigidbodyMove : MonoBehaviour
         {
             isMoving = true;
             Vector2 input = context.ReadValue<Vector2>();
-            moveDirection = new Vector3(input.x, 0f, input.y);
+            moveDirection = new Vector3(input.x, 0f, input.y).normalized;
         }
-        else if (context.canceled)  
+        else if (context.canceled)
         {
             isMoving = false;
             moveDirection = Vector3.zero;
         }
-    
     }
-    private void ForwardCheck()
+
+    private void UpdateValue()
+    {
+        _capsuleBottum = transform.position + Vector3.up * 0.1f;
+        _capsuleTop = _capsuleBottum + Vector3.up * 2f;
+    }
+
+    private void CheckGround()
     {
         RaycastHit hit;
-        isOnSlope = false;
-        bool raycast =
-            Physics.CapsuleCast(_capsuleBottum, _capsuleTop, _capsuleRadius, transform.forward, out hit, 1.1f, -1, QueryTriggerInteraction.Ignore);
-        if (raycast)
+        if (Physics.CapsuleCast(_capsuleBottum, _capsuleTop, _capsuleRadius, transform.forward,  out hit, 1.1f, -1, QueryTriggerInteraction.Ignore))
         {
-            slopeAngle = Vector3.Angle(hit.normal, Vector3.up);
+            float slopeAngle = Vector3.Angle(hit.normal, Vector3.up);
+
             isOnSlope = slopeAngle > 0 && slopeAngle <= maxSlopeAngle;
+
             if (isOnSlope && isMoving)
             {
                 Vector3 slopeMoveDirection = Vector3.ProjectOnPlane(moveDirection, hit.normal);
-                if (moveDirection.z > 0) 
-                {
-                    OnSlopMoveDir = slopeMoveDirection.normalized;
-                }
-                else if(moveDirection.z < 0)
-                {
-                    slopeMoveDirection.y *= -1f;
-                    OnSlopMoveDir = slopeMoveDirection.normalized;
-                }
+                moveDirection = slopeMoveDirection.normalized;
             }
         }
+        else
+            isOnSlope = false;
     }
 
     //오르막길 앞에서 자꾸 추락판정이 생김 해결해야 함
     private void StandingOnGround()
     {
         RaycastHit hit;
-        if (Physics.SphereCast(transform.position, radius, Vector3.down, out hit, rayLength, -1, QueryTriggerInteraction.Ignore))
+        if (Physics.SphereCast(transform.position + Vector3.up * 0.2f ,radius, Vector3.down, out hit, rayLength, -1))
         {
-            print("hit.name : " + hit.transform.name);
-            print("hit.distance : " + hit.distance);
             if (hit.distance > 0.1f)
             {
-                vertiGravity = 9.8f;
                 isFalling = true;
+                vertiGravity = 9.8f;
             }
             else
-            {
-                vertiGravity = 0f;
                 isFalling = false;
-            }
         }
     }
 
-    void UpdateCamRotation()
+    private void UpdateCamRotation()
     {
         Vector3 LookRot = new Vector3(0, mainCamera.eulerAngles.y, 0);
         transform.rotation = Quaternion.Lerp
@@ -160,10 +134,14 @@ public class RigidbodyMove : MonoBehaviour
             );
     }
 
-    void UpdateValue()
+    private void UpdateVeloCity()
     {
-        _capsuleBottum = transform.position + Vector3.up;
-        _capsuleTop = transform.position + Vector3.up * 1.1f;
+        if (isMoving || !isOnSlope || !isFalling)
+            rb.velocity = worldMoveDirection * moveSpeed;
+        else if (!isOnSlope && isFalling)
+            rb.velocity = worldMoveDirection * moveSpeed + vertiGravity * Vector3.down;
+        else if (isOnSlope && isMoving)
+            rb.velocity = slopeDirection * moveSpeed;
     }
 
     /*
@@ -179,8 +157,8 @@ public class RigidbodyMove : MonoBehaviour
 
     private void UpdateAnimation()  //<= bool값을 통해 animation을 제어함
     {
-        anim.SetFloat(AnimS.HoriMove, moveDirection.x);
-        anim.SetFloat(AnimS.VertiMove, moveDirection.y);
-        anim.SetBool(AnimS.isMove, isMoving);
+        anim.SetFloat(Constant.AnimatorParams.HoriMove, moveDirection.x);
+        anim.SetFloat(Constant.AnimatorParams.VertiMove, moveDirection.z);
+        anim.SetBool(Constant.AnimatorParams.IsMove, isMoving);
     }
 }
