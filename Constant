@@ -1,0 +1,52 @@
+using Microsoft.Unity.VisualStudio.Editor;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace Constant
+{
+    public static class Tag
+    {
+        public readonly static string Untagged = "Untagged";
+        public readonly static string Respawn = "Respawn";
+        public readonly static string Finish = "Finish";
+        public readonly static string EditorOnly = "EditorOnly";
+        public readonly static string MainCamera = "MainCamera";
+        public readonly static string Player = "Player";
+        public readonly static string GameController = "GameControlller";
+        public readonly static string Enemy = "Enemy";
+        public readonly static string WorldObject = "WorldObject";
+        public readonly static string Sword = "Sword";
+        public readonly static string Hat = "Hat";
+        public readonly static string Terrain = "Terrain";
+        public readonly static string PostionItemSlot = "PostionItemSlot";
+        public readonly static string Equipment = "Equipment";
+        public readonly static string ClearCheck = "ClearChack";
+        public readonly static string Slot = "Slot";
+        public readonly static string Inventory = "Inventory";
+        public readonly static string SlotList = "SlotList";
+        public readonly static string EquipMentSlotList = "EquipMentSlotList";
+        public readonly static string QuickSlot = "Quickslot";
+        public readonly static string Shield = "Shiled";
+        public readonly static string Weapon = "Weapon";
+        public readonly static string Shop = "SHOP";
+        public readonly static string SplitItemWindow = "SPLIT_ITEM_WINDOW";
+        public readonly static string Coin = "Coin";
+        public readonly static string ItemInforWindow = "ITEMINFOWINDOW";
+        public readonly static string Fire = "Fire";
+        public readonly static string Shose = "Shose";
+        public readonly static string Potion = "Potion";
+    }
+    public static class AnimatorParams 
+    {
+        public readonly static int HoriMove = Animator.StringToHash("HoriMove");
+        public readonly static int VertiMove = Animator.StringToHash("VertiMove");
+        public readonly static int IsMove = Animator.StringToHash("isMove");
+        public readonly static int IsRun = Animator.StringToHash("IsRun");
+        public readonly static int Reaction = Animator.StringToHash("Reaction");
+        public readonly static int Rolling = Animator.StringToHash("Rolling");
+        public readonly static int Sliding = Animator.StringToHash("Sliding");
+        public readonly static int Attack = Animator.StringToHash("attack");
+        public readonly static int AttackCount = Animator.StringToHash("AttackCount");
+    }
+}
