@@ -1,22 +1,28 @@
+using System;
+using System.Runtime.ConstrainedExecution;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Windows;
 
 public class RigidbodyMove : MonoBehaviour
 {
     private Rigidbody rb;
     private Transform mainCamera;
     private float moveSpeed = 4f;
+    private float runCoefficient = 2.5f;
 
-    [SerializeField]
-    private bool isMoving = false;
-    [SerializeField]
-    private bool isAttack = false;
-    [SerializeField]
-    private bool isFalling = false;
-    [SerializeField]
-    private bool isHitted = false;
-    [SerializeField]
-    private bool isOnSlope = false;
+    [Serializable]
+    private class CheckBool
+    {
+        public bool isMoving = false;
+        public bool isAttack = false;
+        public bool isFalling = false;
+        public bool isHitted = false;
+        public bool isOnSlope = false;
+        public bool isRunning = false;
+    }
+
+    CheckBool checkBool = new();
     [SerializeField]
     private float maxSlopeAngle = 45f;
     [SerializeField]
@@ -25,6 +31,8 @@ public class RigidbodyMove : MonoBehaviour
     private Vector3 moveDirection;
     [SerializeField]
     private Vector3 slopeDirection;
+    [SerializeField]
+    private Vector3 slopeMoveDirection;
 
     private float vertiGravity;
     private Vector3 _capsuleBottum;
@@ -32,8 +40,8 @@ public class RigidbodyMove : MonoBehaviour
     private float _capsuleRadius = 0.1f;
     float rayLength = float.MaxValue;
     float radius = 0.5f;
-
     private Animator anim;
+
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
@@ -54,73 +62,83 @@ public class RigidbodyMove : MonoBehaviour
     {
         UpdateAnimation();
         UpdateValue();
-        if(isMoving || isAttack)
+        if(checkBool.isMoving || checkBool.isAttack)
             UpdateCamRotation();
+        UpdateVeloCity();
     }
 
     private void FixedUpdate()  //<= 이동이 최종적으로 rigidBody를 통해 반영되므로 FixedUpdate에서 반영함
     {
-        worldMoveDirection = transform.TransformDirection(moveDirection);
-        slopeDirection = transform.TransformDirection(slopeDirection);
-        CheckGround();
         StandingOnGround();
-        UpdateVeloCity();
+        CheckGround();
     }
 
     public void OnMove(InputAction.CallbackContext context) //<=이동에 대한 입력을 담당 실제 반영은 위에 FixedUpdate의 rb.veloctiy에서 반영
     {
         if (context.performed)
         {
-            isMoving = true;
+            checkBool.isMoving = true;
             Vector2 input = context.ReadValue<Vector2>();
             moveDirection = new Vector3(input.x, 0f, input.y).normalized;
         }
         else if (context.canceled)
         {
-            isMoving = false;
+            checkBool.isMoving = false;
             moveDirection = Vector3.zero;
         }
     }
 
+    public void OnRun(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+            checkBool.isRunning = true;
+        else if (context.canceled)
+            checkBool.isRunning = false;
+    }
+
     private void UpdateValue()
     {
+        /*RayCast Position Update*/
         _capsuleBottum = transform.position + Vector3.up * 0.1f;
         _capsuleTop = _capsuleBottum + Vector3.up * 2f;
+
+        /*Animation Parameter Update*/
+        anim.SetFloat(Constant.AnimatorParams.HoriMove, moveDirection.x);
+        if(!checkBool.isRunning)
+            anim.SetFloat(Constant.AnimatorParams.VertiMove, moveDirection.z);
+        else
+            anim.SetFloat(Constant.AnimatorParams.VertiMove, moveDirection.z * 2);
+        /*Move Velocity Update*/
+        worldMoveDirection = transform.TransformDirection(moveDirection);
+        slopeDirection = transform.TransformDirection(slopeMoveDirection);
     }
 
     private void CheckGround()
     {
         RaycastHit hit;
-        if (Physics.CapsuleCast(_capsuleBottum, _capsuleTop, _capsuleRadius, transform.forward,  out hit, 1.1f, -1, QueryTriggerInteraction.Ignore))
+        bool cast = 
+        Physics.CapsuleCast(_capsuleBottum, _capsuleTop, _capsuleRadius, transform.forward, out hit, 1.1f, -1, QueryTriggerInteraction.Ignore);
+        if (cast)
         {
             float slopeAngle = Vector3.Angle(hit.normal, Vector3.up);
-
-            isOnSlope = slopeAngle > 0 && slopeAngle <= maxSlopeAngle;
-
-            if (isOnSlope && isMoving)
-            {
-                Vector3 slopeMoveDirection = Vector3.ProjectOnPlane(moveDirection, hit.normal);
-                moveDirection = slopeMoveDirection.normalized;
-            }
+            checkBool.isOnSlope = slopeAngle > 0 && slopeAngle <= maxSlopeAngle;
+            if (checkBool.isOnSlope && checkBool.isMoving)
+                slopeMoveDirection = Vector3.ProjectOnPlane(moveDirection, hit.normal);
         }
         else
-            isOnSlope = false;
+            checkBool.isOnSlope = false;
     }
 
-    //오르막길 앞에서 자꾸 추락판정이 생김 해결해야 함
     private void StandingOnGround()
     {
         RaycastHit hit;
+        checkBool.isFalling = false;
         if (Physics.SphereCast(transform.position + Vector3.up * 0.2f ,radius, Vector3.down, out hit, rayLength, -1))
         {
             if (hit.distance > 0.1f)
-            {
-                isFalling = true;
-                vertiGravity = 9.8f;
-            }
-            else
-                isFalling = false;
+                checkBool.isFalling = true;
         }
+        vertiGravity = checkBool.isFalling ? 9.8f : 0;
     }
 
     private void UpdateCamRotation()
@@ -136,29 +154,19 @@ public class RigidbodyMove : MonoBehaviour
 
     private void UpdateVeloCity()
     {
-        if (isMoving || !isOnSlope || !isFalling)
-            rb.velocity = worldMoveDirection * moveSpeed;
-        else if (!isOnSlope && isFalling)
-            rb.velocity = worldMoveDirection * moveSpeed + vertiGravity * Vector3.down;
-        else if (isOnSlope && isMoving)
+        if (!checkBool.isOnSlope)
+            if(!checkBool.isRunning)
+                rb.velocity = worldMoveDirection * moveSpeed + vertiGravity * Vector3.down;
+            else if(checkBool.isRunning)
+                rb.velocity = worldMoveDirection * runCoefficient * moveSpeed  + vertiGravity * Vector3.down;
+        else if (checkBool.isOnSlope && checkBool.isMoving)
             rb.velocity = slopeDirection * moveSpeed;
+        else if (checkBool.isOnSlope && !checkBool.isMoving)
+            rb.velocity = Vector3.zero;
     }
-
-    /*
-    readonly private int attack = Animator.StringToHash("attack");
-    readonly private int HoriMove = Animator.StringToHash("HoriMove");  
-    readonly private int VertiMove = Animator.StringToHash("VertiMove");
-    readonly private int isMove = Animator.StringToHash("isMove");
-    readonly private int isRun = Animator.StringToHash("IsRun");
-    readonly private int Reaction = Animator.StringToHash("Reaction");
-    readonly private int rolling = Animator.StringToHash("Rolling");
-    readonly private int sliding = Animator.StringToHash("Sliding");
-     */
 
     private void UpdateAnimation()  //<= bool값을 통해 animation을 제어함
     {
-        anim.SetFloat(Constant.AnimatorParams.HoriMove, moveDirection.x);
-        anim.SetFloat(Constant.AnimatorParams.VertiMove, moveDirection.z);
-        anim.SetBool(Constant.AnimatorParams.IsMove, isMoving);
+        anim.SetBool(Constant.AnimatorParams.IsMove, checkBool.isMoving);
     }
 }
