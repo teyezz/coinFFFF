@@ -1,0 +1,53 @@
+using System.Collections;
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+public class WeaponAttack : MonoBehaviour
+{
+    private Animator anim;
+    private STD playerSTD;      //<= 추후에 무기 딜레이값을 받아오기 위한 참조
+    private WaitForSeconds attackDealay = new WaitForSeconds(1.1f);
+    private bool isAttack = false;
+    [SerializeField]
+    private BoxCollider WeaponCollider; //<= 인스펙터 주입으로 찾음
+
+    float comboTimer = 0;
+    int comboo = 0;
+
+
+    private void Awake()
+    {
+        anim = GetComponent<Animator>();
+        playerSTD = GetComponent<STD>();
+    }
+
+    private void Update()
+    {
+        comboTimer = Mathf.Clamp(comboTimer, 0, 3f);
+        comboTimer -= Time.deltaTime;
+        if (comboTimer <= 0)
+            comboo = 0;
+
+        anim.SetInteger(Constant.AnimatorParams.AttackCount, comboo);
+    }
+
+    public void OnAttack(InputAction.CallbackContext context)
+    {
+        comboTimer = 1f;
+        comboo++;
+        anim.SetTrigger(Constant.AnimatorParams.Attack);
+        if (context.started)
+            StartCoroutine(AttackCheck());
+        
+    }
+    IEnumerator AttackCheck()
+    {
+        if(isAttack)
+           yield break;
+        isAttack = true;
+        //transform.LookAt();
+        WeaponCollider.enabled = true;
+        yield return attackDealay;
+        isAttack = false;
+    }
+}
