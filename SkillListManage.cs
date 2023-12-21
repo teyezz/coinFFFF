@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.InputSystem;
 using System;
+using UnityEditor.Timeline;
 
 public class SkillListManage : MonoBehaviour
 {
@@ -17,11 +18,7 @@ public class SkillListManage : MonoBehaviour
     [SerializeField]               
     protected AnimatorOverrideController AnimatorOverrideController; //런타임 중 애니메이션을 오버라이드하기 위한 Controller
     [SerializeField]
-    protected AnimationClipOverrides clipOverrides;                 //개별 애니메이션 클립을 받기 위한 애니메이션 클립
-
-    readonly int skill0 = Animator.StringToHash("Skill0");      //개별 스킬들의 상수 string을 int로 저장
-    readonly int skill1 = Animator.StringToHash("Skill1");
-    readonly int skill2 = Animator.StringToHash("Skill2");
+    protected AnimationOverrideClip clipOverrides;                 //개별 애니메이션 클립을 받기 위한 애니메이션 클립
     
     private void Start()
     {
@@ -29,54 +26,51 @@ public class SkillListManage : MonoBehaviour
         usableSkill = new SKD[index];
         AnimatorOverrideController = new AnimatorOverrideController(playerani.runtimeAnimatorController);
         playerani.runtimeAnimatorController = AnimatorOverrideController;
-        clipOverrides = new AnimationClipOverrides(AnimatorOverrideController.overridesCount);
+        clipOverrides = new AnimationOverrideClip(AnimatorOverrideController.overridesCount);
         AnimatorOverrideController.GetOverrides(clipOverrides);
         ReFresh();
        
     }
-    private void Update()
-    {
-        if (Input.GetKeyDown(KeyCode.Tab))      //후에 inputSystem으로 개선한다
-            ReFresh();
-        if (Input.GetKeyDown(KeyCode.Z))
-            OnUse0();
-        if (Input.GetKeyDown(KeyCode.X))
-            OnUse1();
-        if (Input.GetKeyDown(KeyCode.C))
-            OnUse2();
-    }
-    void ReFresh()  // 밑에 거가 추가가 안됨
+
+
+    public void ReFresh()  // 밑에 거가 추가가 안됨
     {
         Array.Clear(usableSkill,0,usableSkill.Length);
         usableSkill = GetComponentsInChildren<SKD>();
-        clipOverrides["Skill0"] = usableSkill[0]._animationClip;  //받는 부분이 this[string]
+        clipOverrides[Constant.AnimationClip.Skill0String] = usableSkill[0]._animationClip;  //받는 부분이 this[string]
         print("is Work1");
-        clipOverrides["Skill1"] = usableSkill[1]._animationClip;  //받는 부분이 this[string]
+        clipOverrides[Constant.AnimationClip.Skill1String] = usableSkill[1]._animationClip;  //받는 부분이 this[string]
         print("is Work2");
-        clipOverrides["Skill2"] = usableSkill[2]._animationClip;  //받는 부분이 this[string]
+        clipOverrides[Constant.AnimationClip.Skill2String] = usableSkill[2]._animationClip;  //받는 부분이 this[string]
         print("is Work3");
         AnimatorOverrideController.ApplyOverrides(clipOverrides);   //AnimatorOverrideController는 이미 playerani에 속함. ApplyOverrides는 한 프레임 내 2개 이상의 Clip을 Override할 때만 사용한다
         playerani.runtimeAnimatorController = AnimatorOverrideController;
     }
 
-    void OnUse0()
+    public void OnUse0(InputAction.CallbackContext context)
     {
-        print("OnUse0");
-        var skill = Instantiate(usableSkill[0].gameObject, playerani.transform);
-        Destroy(skill, usableSkill[0]._colldown);
-        playerani.Play("Skill0");
-        playerani.SetBool("IsSkill", true);
+        Vector3 SkillPos = transform.position + transform.forward * 4f + transform.up * 4f ;
+        if (context.started)
+        {
+            if (usableSkill[0].isProjectlie)
+                Instantiate(usableSkill[0].Projectlie, SkillPos, transform.rotation);
+            playerani.Play(Constant.AnimationClip.Skill0String);
+        }
     }
-    void OnUse1()
+    public void OnUse1(InputAction.CallbackContext context)
     {
-        print("OnUse1");
-        var skill = Instantiate(usableSkill[1]);
-        playerani.Play("Skill1");
+        if (context.started)
+        {
+            var skill = Instantiate(usableSkill[1]);
+            playerani.Play(Constant.AnimationClip.Skill1String);
+        }
     }
-    void OnUse2()
+    public void OnUse2(InputAction.CallbackContext context)
     {
-        print("OnUse2");
-        var skill = Instantiate(usableSkill[2]);
-        playerani.Play("Skill2");
+        if (context.started)
+        {
+            var skill = Instantiate(usableSkill[2]);
+            playerani.Play(Constant.AnimationClip.Skill2String);
+        }
     }
 }
