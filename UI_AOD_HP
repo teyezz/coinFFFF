@@ -1,0 +1,21 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class UI_AOD_HP : MonoBehaviour
+{
+    private STD playerSTD;
+    private Image curHPImage;
+
+    private void Start()
+    {
+        playerSTD = GameObject.FindWithTag(Constant.Tag.Player).GetComponent<STD>();
+        curHPImage = GetComponentInChildren<Image>();
+    }
+
+    private void Update()
+    {
+        curHPImage.fillAmount = (float)playerSTD.curHp/(float)playerSTD.maxHp;
+    }
+}
